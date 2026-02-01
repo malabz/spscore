@@ -9,16 +9,10 @@ export CXXFLAGS="${CXXFLAGS} -O3"
 
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-  -DCMAKE_PREFIX_PATH="${PREFIX}" \
-  -DCMAKE_INSTALL_LIBDIR=lib \
-  -DBUILD_TESTING=OFF \
-  -DWFA2LIB_BUILD_BENCHMARK=OFF \
-  -DWFA2LIB_BUILD_TESTS=OFF \
-  -DHALIGN4_NATIVE_ARCH=OFF
+
 
 cmake --build build -j "${CPU_COUNT}"
 
 # 你的工程目前没有 install() 规则，所以这里手动安装可执行文件
 install -d "${PREFIX}/bin"
-install -m 0755 build/halign4 "${PREFIX}/bin/halign4"
+install -m 0755 build/spscore "${PREFIX}/bin/spscore"

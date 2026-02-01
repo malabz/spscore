@@ -33,3 +33,4 @@ target_link_libraries(spscore PRIVATE ZLIB::ZLIB)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(spscore PRIVATE OpenMP::OpenMP_CXX)
 endif()
+

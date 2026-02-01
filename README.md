@@ -2,9 +2,13 @@
 
 A fast, memory-efficient tool to calculate Sum-of-Pairs (SP) scores for Multiple Sequence Alignments (MSA).
 
-## 🚀 Quick Start
+##  Install (Conda)
 
-### Build
+```bash
+conda install -c malab spscore
+```
+
+## Install (cmake)
 ```bash
 # Main program
 mkdir -p build && cd build
@@ -17,6 +21,11 @@ mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j
 ```
+```
+
+
+## 🚀 Quick Start
+
 
 ## 💻 Usage
 
@@ -53,5 +62,3 @@ Scaled SP       0.990926
 - **O(L) Memory**: Streaming mode processes sequences without loading the entire alignment.
 - **Robust Parsing**: Built-in FASTA/GZIP support via `kseq.h`.
 - **Flexible Scoring**: Customizable penalties for different pair types.
-
-
