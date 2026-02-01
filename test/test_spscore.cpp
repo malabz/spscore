@@ -7,6 +7,52 @@
 #include <chrono>
 #include <iostream>
 #include <fstream>
+#include <sstream>
+
+// ============================================================================
+// 内存使用监控工具
+// ============================================================================
+
+// 获取当前进程的内存使用量（单位：KB）
+// 返回 RSS (Resident Set Size) - 实际使用的物理内存
+size_t get_memory_usage_kb() {
+#if defined(__linux__) || defined(__APPLE__)
+    // Linux/Unix/WSL 平台 - 读取 /proc/self/status
+    std::ifstream status_file("/proc/self/status");
+    std::string line;
+    while (std::getline(status_file, line)) {
+        if (line.substr(0, 6) == "VmRSS:") {
+            std::istringstream iss(line);
+            std::string label;
+            size_t value;
+            iss >> label >> value;
+            return value; // 已经是 KB
+        }
+    }
+#endif
+    return 0; // 不支持的平台返回 0
+}
+
+struct MemorySnapshot {
+    size_t before_kb;
+    size_t after_kb;
+    size_t delta_kb;
+
+    MemorySnapshot() : before_kb(0), after_kb(0), delta_kb(0) {}
+
+    void take_before() {
+        before_kb = get_memory_usage_kb();
+    }
+
+    void take_after() {
+        after_kb = get_memory_usage_kb();
+        delta_kb = (after_kb > before_kb) ? (after_kb - before_kb) : 0;
+    }
+
+    double delta_mb() const {
+        return delta_kb / 1024.0;
+    }
+};
 
 // ============================================================================
 // test_spscore.cpp（中文注释版）
@@ -391,7 +437,12 @@ TEST_SUITE("edge cases and error handling") {
 // 当前我们保持原阈值不变，仅补充解释。
 
 TEST_SUITE("performance tests") {
-    TEST_CASE("small alignment (10 sequences x 100 bp)") {
+    // ========== 基础性能测试（带内存监控）==========
+
+    TEST_CASE("baseline: 10 sequences x 100 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
         for (int i = 0; i < 10; ++i) {
             std::string seq;
@@ -405,13 +456,19 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
+        mem.take_after();
+
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        std::cout << "10 sequences x 100 bp: " << duration.count() << " μs\n";
+        std::cout << "10 sequences x 100 bp: " << duration.count() << " μs, "
+                  << "Memory: " << mem.delta_mb() << " MB\n";
 
         CHECK(duration.count() < 100000); // Should be < 100ms
     }
 
-    TEST_CASE("medium alignment (50 sequences x 500 bp)") {
+    TEST_CASE("small: 50 sequences x 500 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
         for (int i = 0; i < 50; ++i) {
             std::string seq;
@@ -425,13 +482,19 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
+        mem.take_after();
+
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "50 sequences x 500 bp: " << duration.count() << " ms\n";
+        std::cout << "50 sequences x 500 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB\n";
 
         CHECK(duration.count() < 1000); // Should be < 1s
     }
 
-    TEST_CASE("large alignment (100 sequences x 1000 bp)") {
+    TEST_CASE("medium: 100 sequences x 1000 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
         for (int i = 0; i < 100; ++i) {
             std::string seq;
@@ -445,17 +508,27 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
+        mem.take_after();
+
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "100 sequences x 1000 bp: " << duration.count() << " ms\n";
+        std::cout << "100 sequences x 1000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB\n";
 
         CHECK(duration.count() < 5000); // Should be < 5s
     }
 
-    TEST_CASE("very large alignment (200 sequences x 2000 bp)") {
+    // ========== 大规模测试 ==========
+
+    TEST_CASE("large: 500 sequences x 1000 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
-        for (int i = 0; i < 200; ++i) {
+        seqs.reserve(500);
+        for (int i = 0; i < 500; ++i) {
             std::string seq;
-            for (int j = 0; j < 2000; ++j) {
+            seq.reserve(1000);
+            for (int j = 0; j < 1000; ++j) {
                 seq += "ACGT"[j % 4];
             }
             seqs.push_back(seq);
@@ -465,18 +538,84 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
+        mem.take_after();
+
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "200 sequences x 2000 bp: " << duration.count() << " ms\n";
+        std::cout << "500 sequences x 1000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 10000); // Should be < 10s
+    }
+
+    TEST_CASE("large: 1000 sequences x 500 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
+        std::vector<std::string> seqs;
+        seqs.reserve(1000);
+        for (int i = 0; i < 1000; ++i) {
+            std::string seq;
+            seq.reserve(500);
+            for (int j = 0; j < 500; ++j) {
+                seq += "ACGT"[j % 4];
+            }
+            seqs.push_back(seq);
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = calculate_sp_score(seqs);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        mem.take_after();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "1000 sequences x 500 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 15000); // Should be < 15s
+    }
+
+    TEST_CASE("very large: 200 sequences x 5000 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
+        std::vector<std::string> seqs;
+        seqs.reserve(200);
+        for (int i = 0; i < 200; ++i) {
+            std::string seq;
+            seq.reserve(5000);
+            for (int j = 0; j < 5000; ++j) {
+                seq += "ACGT"[j % 4];
+            }
+            seqs.push_back(seq);
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = calculate_sp_score(seqs);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        mem.take_after();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "200 sequences x 5000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
 
         CHECK(duration.count() < 20000); // Should be < 20s
     }
 
-    TEST_CASE("long sequences (10 sequences x 10000 bp)") {
+    // ========== 极限测试 - 超大规模 ==========
+
+    TEST_CASE("extreme: 2000 sequences x 1000 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
-        for (int i = 0; i < 10; ++i) {
+        seqs.reserve(2000);
+        for (int i = 0; i < 2000; ++i) {
             std::string seq;
-            for (int j = 0; j < 10000; ++j) {
-                seq += "ACGT"[j % 4];
+            seq.reserve(1000);
+            for (int j = 0; j < 1000; ++j) {
+                seq += "ACGTN-"[(i + j) % 6]; // 添加一些变化
             }
             seqs.push_back(seq);
         }
@@ -485,17 +624,27 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "10 sequences x 10000 bp: " << duration.count() << " ms\n";
+        mem.take_after();
 
-        CHECK(duration.count() < 1000); // Should be < 1s
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "2000 sequences x 1000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 60000); // Should be < 60s
+        // 验证计算确实完成
+        CHECK(result.total_sp != 0.0);
     }
 
-    TEST_CASE("many sequences (500 sequences x 100 bp)") {
+    TEST_CASE("extreme: 100 sequences x 50000 bp (long genome)") {
+        MemorySnapshot mem;
+        mem.take_before();
+
         std::vector<std::string> seqs;
-        for (int i = 0; i < 500; ++i) {
+        seqs.reserve(100);
+        for (int i = 0; i < 100; ++i) {
             std::string seq;
-            for (int j = 0; j < 100; ++j) {
+            seq.reserve(50000);
+            for (int j = 0; j < 50000; ++j) {
                 seq += "ACGT"[j % 4];
             }
             seqs.push_back(seq);
@@ -505,10 +654,83 @@ TEST_SUITE("performance tests") {
         auto result = calculate_sp_score(seqs);
         auto end = std::chrono::high_resolution_clock::now();
 
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-        std::cout << "500 sequences x 100 bp: " << duration.count() << " ms\n";
+        mem.take_after();
 
-        CHECK(duration.count() < 5000); // Should be < 5s
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "100 sequences x 50000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 30000); // Should be < 30s
+        CHECK(result.total_sp != 0.0);
+    }
+
+    TEST_CASE("extreme: 5000 sequences x 100 bp (many individuals)") {
+        MemorySnapshot mem;
+        mem.take_before();
+
+        std::vector<std::string> seqs;
+        seqs.reserve(5000);
+        for (int i = 0; i < 5000; ++i) {
+            std::string seq;
+            seq.reserve(100);
+            for (int j = 0; j < 100; ++j) {
+                // 添加一些变异模拟真实数据
+                int base_idx = (i/100 + j) % 4;
+                seq += "ACGT"[base_idx];
+            }
+            seqs.push_back(seq);
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = calculate_sp_score(seqs);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        mem.take_after();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "5000 sequences x 100 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 30000); // Should be < 30s
+        CHECK(result.total_sp != 0.0);
+    }
+
+    // ========== 内存压力测试 ==========
+
+    TEST_CASE("memory stress: 1000 sequences x 10000 bp") {
+        MemorySnapshot mem;
+        mem.take_before();
+
+        std::vector<std::string> seqs;
+        seqs.reserve(1000);
+        for (int i = 0; i < 1000; ++i) {
+            std::string seq;
+            seq.reserve(10000);
+            for (int j = 0; j < 10000; ++j) {
+                seq += "ACGTN-"[(i*j) % 6];
+            }
+            seqs.push_back(seq);
+        }
+
+        auto start = std::chrono::high_resolution_clock::now();
+        auto result = calculate_sp_score(seqs);
+        auto end = std::chrono::high_resolution_clock::now();
+
+        mem.take_after();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "1000 sequences x 10000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 90000); // Should be < 90s
+        CHECK(result.total_sp != 0.0);
+
+        // 验证内存使用合理（10MB sequences + overhead）
+        // 1000 * 10000 = 10M characters ≈ 10MB + overhead
+        if (mem.after_kb > 0) {
+            std::cout << "  Expected ~10-50 MB for data, actual total: "
+                      << mem.after_kb/1024.0 << " MB\n";
+        }
     }
 }
 
