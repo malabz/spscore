@@ -601,3 +601,430 @@ TEST_SUITE("biological scenarios") {
     }
 }
 
+// ======================== 详细正确性测试 ========================
+
+// 中文说明：
+// 以下测试套件针对各种边界条件、数学正确性、组合情况等进行详细验证。
+// 这些测试确保实现严格符合 SP score 的数学定义。
+
+TEST_SUITE("detailed correctness tests") {
+
+    // ========== 精确的单列计算验证 ==========
+
+    TEST_CASE("single column exact calculation - all same base") {
+        // 场景：2 条序列，一列都是 A
+        // match = C(2,2)=1，其他都是 0
+        // 期望得分 = 1*1 = 1
+        std::vector<std::string> seqs = {"A", "A"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 1.0));
+        CHECK(approx_equal(result.avg_sp, 1.0));    // 1对序列
+        CHECK(approx_equal(result.scaled_sp, 1.0)); // 1列
+    }
+
+    TEST_CASE("single column exact calculation - two different bases") {
+        // 场景：2 条序列，一列分别是 A 和 C
+        // mismatch = 1*1 = 1
+        // 期望得分 = 1*(-1) = -1
+        std::vector<std::string> seqs = {"A", "C"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -1.0));
+    }
+
+    TEST_CASE("single column exact calculation - one gap") {
+        // 场景：2 条序列，一列是 A 和 '-'
+        // gap1 = 1*1 = 1
+        // 期望得分 = 1*(-2) = -2
+        std::vector<std::string> seqs = {"A", "-"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -2.0));
+    }
+
+    TEST_CASE("single column exact calculation - two gaps") {
+        // 场景：2 条序列，一列都是 '-'
+        // gap2 包含 gap-gap = C(2,2)=1
+        // gap2S=0，期望得分 = 1*0 = 0
+        std::vector<std::string> seqs = {"-", "-"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 0.0));
+    }
+
+    TEST_CASE("single column exact calculation - one N") {
+        // 场景：2 条序列，一列是 A 和 N
+        // gap2 包含 N-ATGC = 1*1 = 1
+        // gap2S=0，期望得分 = 1*0 = 0
+        std::vector<std::string> seqs = {"A", "N"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 0.0));
+    }
+
+    TEST_CASE("single column exact calculation - N and gap") {
+        // 场景：2 条序列，一列是 N 和 '-'
+        // gap1 = (N的数量)*('-'的数量) = 1*1 = 1
+        // 期望得分 = 1*(-2) = -2
+        std::vector<std::string> seqs = {"N", "-"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -2.0));
+    }
+
+    // ========== 3 序列的精确计算 ==========
+
+    TEST_CASE("three sequences - all matches") {
+        // 场景：3 条序列，一列都是 A
+        // 序列对数 = C(3,2) = 3
+        // match = C(3,2) = 3
+        // 期望得分 = 3*1 = 3
+        std::vector<std::string> seqs = {"A", "A", "A"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 3.0));
+        CHECK(approx_equal(result.avg_sp, 1.0));    // 3/3 = 1
+        CHECK(approx_equal(result.scaled_sp, 1.0)); // 1/1 = 1
+    }
+
+    TEST_CASE("three sequences - mixed AAC") {
+        // 场景：3 条序列，一列是 A、A、C
+        // match(AA) = C(2,2) = 1
+        // mismatch(A-C) = 2*1 = 2 (两个A各与一个C配对)
+        // 期望得分 = 1*1 + 2*(-1) = 1 - 2 = -1
+        std::vector<std::string> seqs = {"A", "A", "C"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -1.0));
+    }
+
+    TEST_CASE("three sequences - all different") {
+        // 场景：3 条序列，一列是 A、C、G
+        // mismatch = A*C + A*G + C*G = 1*1 + 1*1 + 1*1 = 3
+        // 期望得分 = 3*(-1) = -3
+        std::vector<std::string> seqs = {"A", "C", "G"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -3.0));
+    }
+
+    TEST_CASE("three sequences - with one gap") {
+        // 场景：3 条序列，一列是 A、A、'-'
+        // match(AA) = C(2,2) = 1
+        // gap1 = (A+C+G+T+N)*D = 2*1 = 2
+        // 期望得分 = 1*1 + 2*(-2) = 1 - 4 = -3
+        std::vector<std::string> seqs = {"A", "A", "-"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -3.0));
+    }
+
+    TEST_CASE("three sequences - two gaps") {
+        // 场景：3 条序列，一列是 A、'-'、'-'
+        // gap1 = (A+C+G+T+N)*D = 1*2 = 2
+        // gap2 中 gap-gap = C(2,2) = 1
+        // 期望得分 = 2*(-2) + 1*0 = -4
+        std::vector<std::string> seqs = {"A", "-", "-"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -4.0));
+    }
+
+    // ========== 4 序列的复杂情况 ==========
+
+    TEST_CASE("four sequences - AAAC pattern") {
+        // 场景：4 条序列，一列是 A、A、A、C
+        // match(AAA) = C(3,2) = 3
+        // mismatch(A-C) = 3*1 = 3 (三个A各与一个C配对)
+        // 期望得分 = 3*1 + 3*(-1) = 3 - 3 = 0
+        std::vector<std::string> seqs = {"A", "A", "A", "C"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 0.0));
+    }
+
+    TEST_CASE("four sequences - AACC pattern") {
+        // 场景：4 条序列，一列是 A、A、C、C
+        // match = C(2,2) + C(2,2) = 1 + 1 = 2
+        // mismatch(A-C) = 2*2 = 4
+        // 期望得分 = 2*1 + 4*(-1) = 2 - 4 = -2
+        std::vector<std::string> seqs = {"A", "A", "C", "C"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -2.0));
+    }
+
+    TEST_CASE("four sequences - ABCD pattern") {
+        // 场景：4 条序列，一列是 A、C、G、T (四种不同碱基)
+        // mismatch = A*C + A*G + A*T + C*G + C*T + G*T = 6
+        // 期望得分 = 6*(-1) = -6
+        std::vector<std::string> seqs = {"A", "C", "G", "T"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -6.0));
+    }
+
+    // ========== 多列精确计算 ==========
+
+    TEST_CASE("two columns - both match") {
+        // 场景：2 条序列，2 列，都是匹配
+        // 每列得分 = 1，总分 = 2
+        std::vector<std::string> seqs = {"AC", "AC"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 2.0));
+        CHECK(approx_equal(result.scaled_sp, 1.0)); // 2/(1*2) = 1
+    }
+
+    TEST_CASE("two columns - one match one mismatch") {
+        // 场景：2 条序列，第一列匹配(A-A)，第二列错配(C-G)
+        // 总分 = 1 + (-1) = 0
+        std::vector<std::string> seqs = {"AC", "AG"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 0.0));
+    }
+
+
+    // ========== 对称性测试 ==========
+
+    TEST_CASE("sequence order independence") {
+        // SP score 应该与序列顺序无关
+        std::vector<std::string> seqs1 = {"ACGT", "TGCA", "AAAA"};
+        std::vector<std::string> seqs2 = {"AAAA", "ACGT", "TGCA"};
+        std::vector<std::string> seqs3 = {"TGCA", "AAAA", "ACGT"};
+
+        auto result1 = calculate_sp_score(seqs1);
+        auto result2 = calculate_sp_score(seqs2);
+        auto result3 = calculate_sp_score(seqs3);
+
+        CHECK(approx_equal(result1.total_sp, result2.total_sp));
+        CHECK(approx_equal(result1.total_sp, result3.total_sp));
+        CHECK(approx_equal(result1.avg_sp, result2.avg_sp));
+        CHECK(approx_equal(result1.scaled_sp, result2.scaled_sp));
+    }
+
+    TEST_CASE("column order matters") {
+        // 列的顺序不影响 total_sp，但这是预期的（逐列累加）
+        std::vector<std::string> seqs1 = {"AC", "GT"};
+        std::vector<std::string> seqs2 = {"CA", "TG"};
+
+        auto result1 = calculate_sp_score(seqs1);
+        auto result2 = calculate_sp_score(seqs2);
+
+        // 两列都是 mismatch，总分应该相同
+        CHECK(approx_equal(result1.total_sp, result2.total_sp));
+    }
+
+    // ========== 归一化详细测试 ==========
+
+    TEST_CASE("normalization - lowercase equals uppercase") {
+        std::vector<std::string> seqs1 = {"ACGT", "acgt"};
+        auto result = calculate_sp_score(seqs1);
+        // 归一化后应该完全匹配
+        CHECK(approx_equal(result.total_sp, 4.0));
+    }
+
+    TEST_CASE("normalization - U to T conversion") {
+        std::vector<std::string> seqs1 = {"AUUU", "ATTT"};
+        auto result = calculate_sp_score(seqs1);
+        // U 和 T 归一化后相同，应该完全匹配
+        CHECK(approx_equal(result.total_sp, 4.0));
+    }
+
+    TEST_CASE("normalization - mixed case U and T") {
+        std::vector<std::string> seqs1 = {"AuGt", "ATgt"};
+        auto result = calculate_sp_score(seqs1);
+        // 归一化后：ATGT vs ATGT
+        CHECK(approx_equal(result.total_sp, 4.0));
+    }
+
+    TEST_CASE("normalization - invalid characters to N") {
+        std::vector<std::string> seqs1 = {"AXYZ", "ANNN"};
+        auto result = calculate_sp_score(seqs1);
+        // 归一化后：ANNN vs ANNN
+        // 列0: A-A = +1
+        // 列1-3: N-N = 0 (gap2=0)
+        // 总分 = 1
+        CHECK(approx_equal(result.total_sp, 1.0));
+    }
+
+    // ========== 复杂组合测试 ==========
+
+    TEST_CASE("complex mix - all 6 character types") {
+        // 场景：一列包含所有 6 种字符类型：A、C、G、T、N、'-'
+        std::vector<std::string> seqs = {"A", "C", "G", "T", "N", "-"};
+        // 共 6 条序列，C(6,2) = 15 对
+        // match = 0 (没有相同碱基)
+        // mismatch = A*C + A*G + A*T + C*G + C*T + G*T = 6
+        // gap1 = (A+C+G+T+N)*D = 5*1 = 5
+        // gap2 = C(D,2) + C(N,2) + (A+C+G+T)*N = 0 + 0 + 4*1 = 4
+        // 总分 = 0 + 6*(-1) + 5*(-2) + 4*0 = -6 - 10 = -16
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -16.0));
+    }
+
+    TEST_CASE("complex pattern - multiple columns with mixed types") {
+        // 场景：3 条序列，3 列
+        std::vector<std::string> seqs = {
+            "A-N",
+            "ACN",
+            "A-N"
+        };
+        // 列0: AAA => match=C(3,2)=3, 得分=3
+        // 列1: -C- => gap1=(C)*D=1*2=2, gap2=C(2,2)=1, 得分=2*(-2)+1*0=-4
+        // 列2: NNN => gap2=C(3,2)=3, 得分=3*0=0
+        // 总分 = 3 - 4 + 0 = -1
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -1.0));
+    }
+
+    // ========== 自定义计分参数测试 ==========
+
+    TEST_CASE("custom scoring - high match reward") {
+        std::vector<std::string> seqs = {"AAA", "AAA"};
+        auto result = calculate_sp_score(seqs, 10.0, -1.0, -2.0, 0.0);
+        // 3 列，每列 1 个 match
+        // 总分 = 3 * 10 = 30
+        CHECK(approx_equal(result.total_sp, 30.0));
+    }
+
+    TEST_CASE("custom scoring - severe mismatch penalty") {
+        std::vector<std::string> seqs = {"AAA", "CCC"};
+        auto result = calculate_sp_score(seqs, 1.0, -10.0, -2.0, 0.0);
+        // 3 列，每列 1 个 mismatch
+        // 总分 = 3 * (-10) = -30
+        CHECK(approx_equal(result.total_sp, -30.0));
+    }
+
+    TEST_CASE("custom scoring - non-zero gap2") {
+        std::vector<std::string> seqs = {"--", "--"};
+        auto result = calculate_sp_score(seqs, 1.0, -1.0, -2.0, -5.0);
+        // 2 列，每列 gap-gap = C(2,2) = 1
+        // 总分 = 2 * 1 * (-5) = -10
+        CHECK(approx_equal(result.total_sp, -10.0));
+    }
+
+    TEST_CASE("custom scoring - positive gap2") {
+        std::vector<std::string> seqs = {"NN", "NN"};
+        auto result = calculate_sp_score(seqs, 1.0, -1.0, -2.0, 3.0);
+        // 2 列，每列 N-N = C(2,2) = 1
+        // 总分 = 2 * 1 * 3 = 6
+        CHECK(approx_equal(result.total_sp, 6.0));
+    }
+
+    // ========== 大规模精确计算 ==========
+
+    TEST_CASE("5 sequences - all identical") {
+        std::vector<std::string> seqs = {"ACGT", "ACGT", "ACGT", "ACGT", "ACGT"};
+        // 5 条序列，C(5,2) = 10 对
+        // 4 列，每列 match = C(5,2) = 10
+        // 总分 = 4 * 10 = 40
+        // avg_sp = 40 / 10 = 4
+        // scaled_sp = 4 / 4 = 1
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 40.0));
+        CHECK(approx_equal(result.avg_sp, 4.0));
+        CHECK(approx_equal(result.scaled_sp, 1.0));
+    }
+
+    TEST_CASE("10 sequences - specific pattern") {
+        // 5 个 A，5 个 C
+        std::vector<std::string> seqs = {
+            "A", "A", "A", "A", "A",
+            "C", "C", "C", "C", "C"
+        };
+        // 10 条序列，C(10,2) = 45 对
+        // match(AA) = C(5,2) = 10
+        // match(CC) = C(5,2) = 10
+        // mismatch(A-C) = 5*5 = 25
+        // 总分 = 10 + 10 + 25*(-1) = 20 - 25 = -5
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -5.0));
+    }
+
+    // ========== 边界值测试 ==========
+
+    TEST_CASE("exactly 2 sequences - minimal valid input") {
+        std::vector<std::string> seqs = {"A", "A"};
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 1.0));
+        CHECK(approx_equal(result.avg_sp, 1.0));   // 1 对
+        CHECK(approx_equal(result.scaled_sp, 1.0)); // 1 列
+    }
+
+    TEST_CASE("single column - minimal length") {
+        std::vector<std::string> seqs = {"A", "C", "G"};
+        // 3 序列 1 列
+        // mismatch = A*C + A*G + C*G = 3
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -3.0));
+        CHECK(approx_equal(result.scaled_sp, -1.0)); // -3 / 3对 / 1列
+    }
+
+    // ========== N 和 gap 的详细组合 ==========
+
+    TEST_CASE("N interactions - N with all base types") {
+        // 场景：N 与 A、C、G、T 各一个
+        std::vector<std::string> seqs = {"N", "A", "C", "G", "T"};
+        // gap2 包含 N-(A+C+G+T) = 1*4 = 4
+        // mismatch = A*C + A*G + A*T + C*G + C*T + G*T = 6
+        // 总分 = 4*0 + 6*(-1) = -6
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -6.0));
+    }
+
+    TEST_CASE("gap interactions - gap with all types except N") {
+        // 场景：'-' 与 A、C、G、T 各一个
+        std::vector<std::string> seqs = {"-", "A", "C", "G", "T"};
+        // gap1 = (A+C+G+T)*D = 4*1 = 4
+        // mismatch = 6
+        // 总分 = 4*(-2) + 6*(-1) = -8 - 6 = -14
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -14.0));
+    }
+
+    TEST_CASE("multiple Ns and gaps") {
+        std::vector<std::string> seqs = {"NN--", "NN--", "AATT"};
+        // 3 条序列，C(3,2) = 3 对
+        // 列0: N,N,A
+        //   - gap2: N-N=C(2,2)=1, N-A=2*1=2, 总=3
+        //   - 得分 = 3*0 = 0
+        // 列1: N,N,A (同上) = 0
+        // 列2: -,-,T
+        //   - gap2: gap-gap=C(2,2)=1, 得分=1*0=0
+        //   - gap1: T*D=1*2=2, 得分=2*(-2)=-4
+        //   - 总得分 = -4
+        // 列3: -,-,T (同列2) = -4
+        // 总分 = 0 + 0 - 4 - 4 = -8
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -8.0));
+    }
+
+    // ========== 特殊模式验证 ==========
+
+    TEST_CASE("checkerboard pattern") {
+        std::vector<std::string> seqs = {
+            "ACAC",
+            "CACA"
+        };
+        // 每列都是 1 个 A 和 1 个 C，都是 mismatch
+        // 总分 = 4 * (-1) = -4
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -4.0));
+    }
+
+    TEST_CASE("alternating gaps") {
+        std::vector<std::string> seqs = {
+            "A-A-",
+            "-A-A"
+        };
+        // 每列都是 1 个碱基和 1 个 gap
+        // 每列 gap1 = 1*1 = 1
+        // 总分 = 4 * 1 * (-2) = -8
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, -8.0));
+    }
+
+    TEST_CASE("majority consensus") {
+        // 90% 一致的情况
+        std::vector<std::string> seqs;
+        for (int i = 0; i < 9; ++i) {
+            seqs.push_back("A");
+        }
+        seqs.push_back("C");
+
+        // 10 条序列，一列
+        // match(AA) = C(9,2) = 36
+        // mismatch(A-C) = 9*1 = 9
+        // 总分 = 36 - 9 = 27
+        auto result = calculate_sp_score(seqs);
+        CHECK(approx_equal(result.total_sp, 27.0));
+    }
+}
+
