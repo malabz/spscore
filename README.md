@@ -18,14 +18,6 @@ cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j
 ```
 
-### Run Tests
-```bash
-# Using scripts (Recommended)
-./run_tests.sh      
-# Manual
-./test/build/spscore_test
-```
-
 ## 💻 Usage
 
 ```bash
@@ -43,7 +35,13 @@ cmake --build . -j
 
 ### Example:
 ```bash
-./spscore -i alignment.fasta.gz --threads 8
+./spscore -i ./test/data/mt1x.aligned.fasta.gz --threads 8
+```
+
+### Run Tests
+```bash
+# Using scripts (Recommended)
+./run_tests.sh      
 ```
 
 ## 🛠 Features
