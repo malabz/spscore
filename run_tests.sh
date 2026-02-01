@@ -23,6 +23,19 @@ cd "$SCRIPT_DIR"
 # 测试构建目录
 TEST_BUILD_DIR="test/build"
 
+# -----------------------------------------------------------------------------
+# 测试输出日志
+# - 需求："输出测试时候打印的相关信息"。
+# - 做法：把测试可执行文件的 stdout/stderr 同时：
+#   1) 实时打印到终端；
+#   2) 保存到日志文件，便于事后查看/粘贴。
+# -----------------------------------------------------------------------------
+LOG_DIR="$TEST_BUILD_DIR/logs"
+TS="$(date +%Y%m%d_%H%M%S)"
+TEST_LOG="$LOG_DIR/spscore_test_${TS}.log"
+
+# 先创建目录（后面步骤 1 会清理 build 目录，因此这里先仅定义变量，创建在步骤 2 之后）
+
 echo "步骤 1/4: 清理旧的构建文件..."
 if [ -d "$TEST_BUILD_DIR" ]; then
     rm -rf "$TEST_BUILD_DIR"
@@ -53,12 +66,12 @@ fi
 echo ""
 
 echo "步骤 4/4: 运行测试..."
+mkdir -p "$LOG_DIR"
+echo "- 测试输出将同时打印到屏幕，并保存到: $TEST_LOG"
 echo "========================================="
-if ./spscore_test; then
-    TEST_EXIT_CODE=0
-else
-    TEST_EXIT_CODE=$?
-fi
+# 用 tee 同时输出到终端与日志；PIPESTATUS[0] 取到被 tee 包裹的 ./spscore_test 的退出码
+./spscore_test 2>&1 | tee "$TEST_LOG"
+TEST_EXIT_CODE=${PIPESTATUS[0]}
 echo "========================================="
 echo ""
 
@@ -72,12 +85,16 @@ if [ $TEST_EXIT_CODE -eq 0 ]; then
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo "测试可执行文件位置: $TEST_BUILD_DIR/spscore_test"
+    echo "测试输出日志位置:   $TEST_LOG"
     echo ""
     exit 0
 else
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}✗ 测试失败 (退出代码: $TEST_EXIT_CODE)${NC}"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "测试输出日志位置:   $TEST_LOG"
+    echo "（可用 'tail -n 200 $TEST_LOG' 快速查看末尾日志）"
     echo ""
     exit $TEST_EXIT_CODE
 fi

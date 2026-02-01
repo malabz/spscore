@@ -19,6 +19,12 @@ add_executable(spscore_test
     ../src/spscore.cpp
 )
 
+# Fix: Link libstdc++ and libgcc statically to avoid GLIBCXX version mismatch
+# often caused by Conda or older system libraries.
+
+target_link_libraries(spscore_test PRIVATE -static-libstdc++ -static-libgcc)
+
+
 # Link libraries
 target_link_libraries(spscore_test PRIVATE ZLIB::ZLIB)
 if(OpenMP_CXX_FOUND)
@@ -31,4 +37,3 @@ target_compile_definitions(spscore_test PRIVATE NO_MAIN)
 # Enable testing
 enable_testing()
 add_test(NAME spscore_test COMMAND spscore_test)
-

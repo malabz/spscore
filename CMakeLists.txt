@@ -22,8 +22,14 @@ target_compile_definitions(spscore_lib PRIVATE NO_MAIN)
 # Create the main executable
 add_executable(spscore src/spscore.cpp)
 target_include_directories(spscore PRIVATE src)
+
+# Fix: Link libstdc++ and libgcc statically to avoid GLIBCXX version mismatch
+# often caused by Conda or older system libraries.
+if(UNIX)
+    target_link_libraries(spscore PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+
 target_link_libraries(spscore PRIVATE ZLIB::ZLIB)
 if(OpenMP_CXX_FOUND)
     target_link_libraries(spscore PRIVATE OpenMP::OpenMP_CXX)
 endif()
-
