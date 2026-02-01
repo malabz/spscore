@@ -103,5 +103,32 @@ SPScoreResult calculate_sp_score(const std::vector<std::string>& seqs,
 // 返回的序列可直接用于 calculate_sp_score。
 std::vector<std::string> load_fasta(const std::string& path);
 
+// 流式计算 SP score（内存友好版本）
+//
+// 中文说明：
+// 从 FASTA 文件流式读取并计算 SP score，不需要将所有序列加载到内存。
+// 采用两遍扫描策略：
+// - 第一遍：获取序列数量和长度，验证对齐
+// - 第二遍：逐序列读取，逐列累积计数并计算得分
+//
+// 输入：
+// - path：FASTA 文件路径（支持 .gz 压缩）
+// - matchS/mismatchS/gap1S/gap2S：计分参数
+//
+// 输出：
+// - SPScoreResult：包含 total/avg/scaled
+//
+// 优点：
+// - 内存占用 O(L)，L 为序列长度，不依赖序列数量
+// - 适合处理大量序列（数千到数万条）
+//
+// 异常：
+// - 若文件无法打开、序列数量不足、长度不一致等，会抛出异常
+SPScoreResult calculate_sp_score_streaming(const std::string& path,
+                                            double matchS = 1.0,
+                                            double mismatchS = -1.0,
+                                            double gap1S = -2.0,
+                                            double gap2S = 0.0);
+
 #endif // SPSCORE_H
 

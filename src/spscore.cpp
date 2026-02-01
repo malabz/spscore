@@ -223,11 +223,135 @@ SPScoreResult calculate_sp_score(const std::vector<std::string>& seqs,
     return result;
 }
 
+// 流式计算 SP score（内存友好版本）
+//
+// 中文说明：
+// 采用单遍扫描策略：
+// 1. 流式读取每条序列，累积统计每列的 A/C/G/T/N/'-' 计数
+// 2. 读完所有序列后，基于各列的计数一次性计算总得分
+//
+// 关键优化：
+// - 只扫描文件一次
+// - 内存占用 O(L)，L 是序列长度，与序列数量 M 无关
+// - 每条序列读入后仅更新计数器，然后立即丢弃，不保存在内存中
+//
+// 时间复杂度：O(M*L)
+SPScoreResult calculate_sp_score_streaming(const std::string& path,
+                                            double matchS,
+                                            double mismatchS,
+                                            double gap1S,
+                                            double gap2S) {
+    gzFile fp = gzopen(path.c_str(), "rb");
+    if (!fp) {
+        throw std::runtime_error("Cannot open: " + path);
+    }
+
+    kseq_t* ks = kseq_init(fp);
+
+    size_t M = 0;  // 已读序列数量
+    size_t L = 0;  // 序列长度
+
+    // 列式计数器：column_counts[j][0..5] 记录第 j 列所有序列的 A/C/G/T/N/'-' 计数
+    std::vector<std::vector<uint32_t>> column_counts;
+
+    // ========== 第一阶段：流式读取并累积各列计数 ==========
+    while (kseq_read(ks) >= 0) {
+        const size_t seq_len = ks->seq.l;
+
+        // 第一条序列：初始化
+        if (M == 0) {
+            L = seq_len;
+            if (L == 0) {
+                kseq_destroy(ks);
+                gzclose(fp);
+                throw std::invalid_argument("Error: empty sequences.");
+            }
+            // 初始化列计数器
+            column_counts.resize(L, std::vector<uint32_t>(6, 0));
+        } else {
+            // 验证序列长度一致
+            if (seq_len != L) {
+                kseq_destroy(ks);
+                gzclose(fp);
+                throw std::invalid_argument(
+                    "Error: sequences are not the same length (MSA required). "
+                    "seq[0] length=" + std::to_string(L) +
+                    ", seq[" + std::to_string(M) + "] length=" + std::to_string(seq_len));
+            }
+        }
+
+        // 更新各列的碱基计数
+        for (size_t j = 0; j < L; ++j) {
+            const char c = normalize_base(ks->seq.s[j]);
+            switch (c) {
+                case 'A': column_counts[j][0]++; break;
+                case 'C': column_counts[j][1]++; break;
+                case 'G': column_counts[j][2]++; break;
+                case 'T': column_counts[j][3]++; break;
+                case 'N': column_counts[j][4]++; break;
+                case '-': column_counts[j][5]++; break;
+                default:  column_counts[j][4]++; break; // 其他字符视为 N
+            }
+        }
+
+        ++M;
+    }
+
+    kseq_destroy(ks);
+    gzclose(fp);
+
+    if (M < 2) {
+        throw std::invalid_argument("Error: need at least 2 sequences.");
+    }
+
+    // ========== 第二阶段：基于各列计数计算总得分（可并行）==========
+    double total = 0.0;
+
+    #pragma omp parallel for reduction(+:total) schedule(static)
+    for (long long j = 0; j < (long long)L; ++j) {
+        total += score_of_counts(column_counts[j].data(), matchS, mismatchS, gap1S, gap2S);
+    }
+
+    // ========== 计算 avg 和 scaled ==========
+    const long double pair_num_ld = (long double)M * (long double)(M - 1) / 2.0L;
+    const double pair_num = (double)pair_num_ld;
+
+    SPScoreResult result;
+    result.total_sp = total;
+    result.avg_sp = total / pair_num;
+    result.scaled_sp = result.avg_sp / (double)L;
+
+    return result;
+}
+
 // CLI 使用说明
 static void usage(const char* prog) {
     std::cerr
-        << "Usage: " << prog << " -i <msa.fasta[.gz]> [--match v] [--mismatch v] [--gap1 v] [--gap2 v]\n"
-        << "Defaults: match=1 mismatch=-1 gap1=-2 gap2=0\n";
+        << "用法: " << prog << " -i <msa.fasta[.gz]> [选项]\n"
+        << "\n"
+        << "必需参数:\n"
+        << "  -i, --input FILE     输入 FASTA 文件（支持 .gz 压缩）\n"
+        << "\n"
+        << "可选参数:\n"
+        << "  -t, --threads NUM    OpenMP 线程数（默认：所有可用核心）\n"
+        << "  --match SCORE        匹配得分（默认：1.0）\n"
+        << "  --mismatch SCORE     错配得分（默认：-1.0）\n"
+        << "  --gap1 SCORE         gap1 惩罚（默认：-2.0）\n"
+        << "                       gap1: gap 与碱基/N 的配对\n"
+        << "  --gap2 SCORE         gap2 惩罚（默认：0.0）\n"
+        << "                       gap2: gap-gap, N-N, N-碱基 的配对\n"
+        << "  --streaming          使用流式模式（内存友好，适合大文件）\n"
+        << "  -h, --help           显示此帮助信息\n"
+        << "\n"
+        << "示例:\n"
+        << "  " << prog << " -i alignment.fa\n"
+        << "  " << prog << " -i alignment.fa.gz -t 8 --streaming\n"
+        << "  " << prog << " -i alignment.fa --match 2 --mismatch -3\n"
+        << "\n"
+        << "输出:\n"
+        << "  SP score:    所有列的总得分\n"
+        << "  Avg SP:      平均每对序列的得分\n"
+        << "  Scaled SP:   平均每对序列每列的得分（长度归一化）\n";
 }
 
 // 解析形如 "--match <double>" 的参数。
@@ -246,6 +370,8 @@ int main(int argc, char** argv) {
     // gap2=0 的含义通常是：gap-gap 或 N-相关不额外计分/罚分（取决于定义）。
     std::string input_path;
     double matchS = 1.0, mismatchS = -1.0, gap1S = -2.0, gap2S = 0.0;
+    int num_threads = -1;  // -1 表示使用默认值（所有可用核心）
+    bool use_streaming = false;  // 是否使用流式模式
 
     // CLI parsing
     for (int i = 1; i < argc; ++i) {
@@ -253,6 +379,15 @@ int main(int argc, char** argv) {
         if (std::strcmp(a, "-i") == 0 || std::strcmp(a, "--input") == 0) {
             if (i + 1 >= argc) { usage(argv[0]); return 2; }
             input_path = argv[++i];
+        } else if (std::strcmp(a, "-t") == 0 || std::strcmp(a, "--threads") == 0) {
+            if (i + 1 >= argc) { usage(argv[0]); return 2; }
+            num_threads = std::atoi(argv[++i]);
+            if (num_threads < 1) {
+                std::cerr << "错误: 线程数必须 >= 1\n";
+                return 2;
+            }
+        } else if (std::strcmp(a, "--streaming") == 0) {
+            use_streaming = true;
         } else if (std::strcmp(a, "--match") == 0) {
             if (!parse_double_arg(i, argc, argv, matchS)) { usage(argv[0]); return 2; }
         } else if (std::strcmp(a, "--mismatch") == 0) {
@@ -265,23 +400,47 @@ int main(int argc, char** argv) {
             usage(argv[0]);
             return 0;
         } else {
-            std::cerr << "Unknown arg: " << a << "\n";
+            std::cerr << "未知参数: " << a << "\n\n";
             usage(argv[0]);
             return 2;
         }
     }
 
     if (input_path.empty()) {
+        std::cerr << "错误: 必须指定输入文件 (-i)\n\n";
         usage(argv[0]);
         return 2;
     }
 
-    try {
-        // Load sequences（读入并归一化）
-        std::vector<std::string> seqs = load_fasta(input_path);
+    // 设置 OpenMP 线程数
+    #ifdef _OPENMP
+    if (num_threads > 0) {
+        omp_set_num_threads(num_threads);
+        std::cerr << "使用 " << num_threads << " 个线程\n";
+    } else {
+        std::cerr << "使用默认线程数: " << omp_get_max_threads() << "\n";
+    }
+    #else
+    if (num_threads > 0) {
+        std::cerr << "警告: 未启用 OpenMP，线程参数无效\n";
+    }
+    #endif
 
-        // Calculate SP score（计算总分/平均分/归一化分）
-        SPScoreResult result = calculate_sp_score(seqs, matchS, mismatchS, gap1S, gap2S);
+    try {
+        SPScoreResult result;
+
+        if (use_streaming) {
+            std::cerr << "使用流式模式（内存友好）\n";
+            result = calculate_sp_score_streaming(input_path, matchS, mismatchS, gap1S, gap2S);
+        } else {
+            // 传统模式：一次性加载所有序列
+            std::cerr << "加载序列...\n";
+            std::vector<std::string> seqs = load_fasta(input_path);
+            std::cerr << "已加载 " << seqs.size() << " 条序列，长度 " << seqs[0].size() << " bp\n";
+
+            std::cerr << "计算 SP score...\n";
+            result = calculate_sp_score(seqs, matchS, mismatchS, gap1S, gap2S);
+        }
 
         // Output results（固定小数输出，便于脚本解析）
         std::cout.setf(std::ios::fixed);
@@ -292,7 +451,7 @@ int main(int argc, char** argv) {
 
     } catch (const std::exception& e) {
         // 将错误信息输出到 stderr 并返回非 0
-        std::cerr << e.what() << "\n";
+        std::cerr << "错误: " << e.what() << "\n";
         return 1;
     }
 
