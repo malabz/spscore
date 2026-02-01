@@ -1,14 +1,14 @@
-# SPScore
+# SP-Score
 
 A fast, memory-efficient tool to calculate Sum-of-Pairs (SP) scores for Multiple Sequence Alignments (MSA).
 
-##  Install (Conda)
-
+##  Install
+### Conda
 ```bash
 conda install -c malab spscore
 ```
 
-## Install (cmake)
+### Cmake
 ```bash
 # Main program
 mkdir -p build && cd build
