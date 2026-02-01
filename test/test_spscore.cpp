@@ -775,6 +775,42 @@ TEST_SUITE("performance tests") {
         CHECK(result.total_sp != 0.0);
     }
 
+    TEST_CASE("extreme: 5000 sequences x 100000 bp (many individuals)") {
+
+
+        std::vector<std::string> seqs;
+        seqs.reserve(5000);
+        for (int i = 0; i < 5000; ++i) {
+            std::string seq;
+            seq.reserve(100000);
+            for (int j = 0; j < 100000; ++j) {
+                // 添加一些变异模拟真实数据
+                int base_idx = (i/100000 + j) % 4;
+                seq += "ACGT"[base_idx];
+            }
+            seqs.push_back(seq);
+        }
+        std::string temp_file = create_temp_fasta(seqs);
+        MemorySnapshot mem;
+        mem.take_before();
+        auto start = std::chrono::high_resolution_clock::now();
+
+        auto result = calculate_sp_score_streaming(temp_file);
+
+        auto end = std::chrono::high_resolution_clock::now();
+        mem.take_after();
+        remove_temp_file(temp_file);
+
+
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        std::cout << "5000 sequences x 100000 bp: " << duration.count() << " ms, "
+                  << "Memory: " << mem.delta_mb() << " MB (Total: " << mem.after_kb/1024.0 << " MB)\n";
+
+        CHECK(duration.count() < 30000); // Should be < 30s
+        CHECK(result.total_sp != 0.0);
+    }
+
     // ========== 内存压力测试 ==========
 
     TEST_CASE("memory stress: 1000 sequences x 10000 bp") {

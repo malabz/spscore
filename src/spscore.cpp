@@ -39,10 +39,6 @@
 #include <iomanip>
 #include <stdexcept>
 
-#ifdef _OPENMP
-  #include <omp.h>
-#endif
-
 // Your local kseq.h
 #include "kseq.h"
 
@@ -181,7 +177,6 @@ SPScoreResult calculate_sp_score(const std::vector<std::string>& seqs,
     // total 是全局总分，使用 reduction(+:total) 来避免数据竞争。
     double total = 0.0;
 
-    #pragma omp parallel for reduction(+:total) schedule(static)
     for (long long j = 0; j < (long long)L; ++j) {
         // cnt 存放该列的字符统计：A/C/G/T/N/'-'
         uint32_t cnt[6] = {0,0,0,0,0,0};
@@ -307,7 +302,6 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
     // ========== 第二阶段：基于各列计数计算总得分（可并行）==========
     double total = 0.0;
 
-    #pragma omp parallel for reduction(+:total) schedule(static)
     for (long long j = 0; j < (long long)L; ++j) {
         total += score_of_counts(column_counts[j].data(), matchS, mismatchS, gap1S, gap2S);
     }
@@ -333,19 +327,16 @@ static void usage(const char* prog) {
         << "  -i, --input FILE     Input FASTA file (supports .gz compression)\n"
         << "\n"
         << "Optional arguments:\n"
-        << "  -t, --threads NUM    Number of OpenMP threads (default: all available cores)\n"
         << "  --match SCORE        Match score (default: 1.0)\n"
         << "  --mismatch SCORE     Mismatch score (default: -1.0)\n"
         << "  --gap1 SCORE         gap1 penalty (default: -2.0)\n"
         << "                       gap1: gap with base/N pairing\n"
         << "  --gap2 SCORE         gap2 penalty (default: 0.0)\n"
         << "                       gap2: gap-gap, N-N, N-base pairing\n"
-        << "  --streaming          Use streaming mode (memory friendly, suitable for large files)\n"
         << "  -h, --help           Show this help message\n"
         << "\n"
         << "Examples:\n"
         << "  " << prog << " -i alignment.fa\n"
-        << "  " << prog << " -i alignment.fa.gz -t 8 --streaming\n"
         << "  " << prog << " -i alignment.fa --match 2 --mismatch -3\n"
         << "\n"
         << "Output:\n"
@@ -370,7 +361,6 @@ int main(int argc, char** argv) {
     // gap2=0 的含义通常是：gap-gap 或 N-相关不额外计分/罚分（取决于定义）。
     std::string input_path;
     double matchS = 1.0, mismatchS = -1.0, gap1S = -2.0, gap2S = 0.0;
-    int num_threads = -1;  // -1 表示使用默认值（所有可用核心）
     bool use_streaming = true;  // 是否使用流式模式
 
     // CLI parsing
@@ -379,15 +369,6 @@ int main(int argc, char** argv) {
         if (std::strcmp(a, "-i") == 0 || std::strcmp(a, "--input") == 0) {
             if (i + 1 >= argc) { usage(argv[0]); return 2; }
             input_path = argv[++i];
-        } else if (std::strcmp(a, "-t") == 0 || std::strcmp(a, "--threads") == 0) {
-            if (i + 1 >= argc) { usage(argv[0]); return 2; }
-            num_threads = std::atoi(argv[++i]);
-            if (num_threads < 1) {
-                std::cerr << "Error: thread must >= 1\n";
-                return 2;
-            }
-        } else if (std::strcmp(a, "--streaming") == 0) {
-            use_streaming = true;
         } else if (std::strcmp(a, "--match") == 0) {
             if (!parse_double_arg(i, argc, argv, matchS)) { usage(argv[0]); return 2; }
         } else if (std::strcmp(a, "--mismatch") == 0) {
@@ -412,16 +393,6 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    // 设置 OpenMP 线程数
-    #ifdef _OPENMP
-    if (num_threads > 0) {
-        omp_set_num_threads(num_threads);
-    }
-    #else
-    if (num_threads > 0) {
-        std::cerr << "Warning: OpenMP not enabled, thread parameter ignored\n";;
-    }
-    #endif
 
     try {
         SPScoreResult result;
