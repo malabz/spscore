@@ -91,6 +91,33 @@ bool approx_equal(double a, double b, double epsilon = 1e-9) {
     return std::abs(a - b) < epsilon;
 }
 
+// Helper function to create temporary FASTA file for streaming tests
+//
+// 中文说明：
+// 为流式测试创建临时 FASTA 文件，测试完成后需要手动删除
+std::string create_temp_fasta(const std::vector<std::string>& seqs, const std::string& suffix = "") {
+    static int counter = 0;
+    std::string filename = "test_temp_" + std::to_string(counter++) + suffix + ".fa";
+
+    std::ofstream ofs(filename);
+    if (!ofs) {
+        throw std::runtime_error("Cannot create temp file: " + filename);
+    }
+
+    for (size_t i = 0; i < seqs.size(); ++i) {
+        ofs << ">seq" << i << "\n";
+        ofs << seqs[i] << "\n";
+    }
+    ofs.close();
+
+    return filename;
+}
+
+// Helper function to remove temporary file
+void remove_temp_file(const std::string& filename) {
+    std::remove(filename.c_str());
+}
+
 // ======================== Unit Tests ========================
 
 TEST_SUITE("normalize_base") {
@@ -247,7 +274,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("minimal case - 2 identical sequences") {
         std::vector<std::string> seqs = {"ACGT", "ACGT"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // M=2 => C(M,2)=1 对；L=4。
         // 每列都是 match（+1），总分 total_sp=4。
@@ -259,7 +288,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("2 completely different sequences") {
         std::vector<std::string> seqs = {"AAAA", "CCCC"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // M=2 => 只有 1 对；L=4。
         // 每列都是 mismatch（-1），total_sp = 4 * (-1) = -4。
@@ -271,7 +302,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("3 identical sequences") {
         std::vector<std::string> seqs = {"AC", "AC", "AC"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // M=3 => pair 数 C(3,2)=3；L=2。
         // 列 0：A,A,A => match=C(3,2)=3
@@ -284,7 +317,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("sequences with gaps") {
         std::vector<std::string> seqs = {"A-", "A-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // 只有 1 对；2 列。
         // 列 0：A-A => match=+1
@@ -295,7 +330,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("sequences with gap penalties") {
         std::vector<std::string> seqs = {"AA", "A-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // 只有 1 对；2 列。
         // 列 0：A-A => +1
@@ -311,7 +348,9 @@ TEST_SUITE("calculate_sp_score") {
             "ACGT",
             "ACGT"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // M=4 => pair 数 C(4,2)=6；L=4。
         // 每列 4 个相同碱基：列得分=C(4,2)=6。
@@ -328,7 +367,9 @@ TEST_SUITE("calculate_sp_score") {
             "ACCT",
             "ACGT"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // 3 sequences: 3 pairs
         // Column 0: AAA -> 3 matches = 3
@@ -341,7 +382,9 @@ TEST_SUITE("calculate_sp_score") {
 
     TEST_CASE("custom scoring parameters") {
         std::vector<std::string> seqs = {"AA", "CC"};
-        auto result = calculate_sp_score(seqs, 2.0, -3.0, -4.0, -1.0);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file, 2.0, -3.0, -4.0, -1.0);
+        remove_temp_file(temp_file);
 
         // 1 pair, 2 columns, all mismatches
         // Total = 2 * (-3) = -6
@@ -352,30 +395,40 @@ TEST_SUITE("calculate_sp_score") {
 TEST_SUITE("edge cases and error handling") {
     TEST_CASE("single sequence - should throw") {
         std::vector<std::string> seqs = {"ACGT"};
-        CHECK_THROWS_AS(calculate_sp_score(seqs), std::invalid_argument);
+        std::string temp_file = create_temp_fasta(seqs);
+        CHECK_THROWS_AS(calculate_sp_score_streaming(temp_file), std::invalid_argument);
+        remove_temp_file(temp_file);
     }
 
     TEST_CASE("empty sequence vector - should throw") {
         std::vector<std::string> seqs;
-        CHECK_THROWS_AS(calculate_sp_score(seqs), std::invalid_argument);
+        std::string temp_file = create_temp_fasta(seqs);
+        CHECK_THROWS_AS(calculate_sp_score_streaming(temp_file), std::invalid_argument);
+        remove_temp_file(temp_file);
     }
 
     TEST_CASE("empty sequences - should throw") {
         std::vector<std::string> seqs = {"", ""};
-        CHECK_THROWS_AS(calculate_sp_score(seqs), std::invalid_argument);
+        std::string temp_file = create_temp_fasta(seqs);
+        CHECK_THROWS_AS(calculate_sp_score_streaming(temp_file), std::invalid_argument);
+        remove_temp_file(temp_file);
     }
 
     TEST_CASE("unequal length sequences - should throw") {
         std::vector<std::string> seqs = {"ACG", "ACGT"};
-        CHECK_THROWS_AS(calculate_sp_score(seqs), std::invalid_argument);
+        std::string temp_file = create_temp_fasta(seqs);
+        CHECK_THROWS_AS(calculate_sp_score_streaming(temp_file), std::invalid_argument);
+        remove_temp_file(temp_file);
     }
 
     TEST_CASE("very long sequences") {
         std::string seq1(10000, 'A');
         std::string seq2(10000, 'A');
         std::vector<std::string> seqs = {seq1, seq2};
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
-        auto result = calculate_sp_score(seqs);
         // 1 pair, 10000 columns, all matches
         CHECK(approx_equal(result.total_sp, 10000.0));
     }
@@ -386,7 +439,10 @@ TEST_SUITE("edge cases and error handling") {
             seqs.push_back("ACGT");
         }
 
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
+        remove_temp_file(temp_file);
         // 100 sequences: 100*99/2 = 4950 pairs
         // 4 columns, each with 100 identical bases
         // Each column: 100 choose 2 = 4950 matches
@@ -396,7 +452,9 @@ TEST_SUITE("edge cases and error handling") {
 
     TEST_CASE("all gap sequences") {
         std::vector<std::string> seqs = {"---", "---"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // 1 pair, 3 columns of gaps
         // Each column: 2 gaps -> 1 gap-gap (gap2 = 0)
@@ -405,7 +463,9 @@ TEST_SUITE("edge cases and error handling") {
 
     TEST_CASE("all N sequences") {
         std::vector<std::string> seqs = {"NNN", "NNN"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // 1 pair, 3 columns of N's
         // Each column: 2 N's -> 1 N-N (gap2 = 0)
@@ -416,7 +476,9 @@ TEST_SUITE("edge cases and error handling") {
         // Invalid characters should be converted to N
         std::vector<std::string> seqs = {"AXY", "AXY"};
         // After normalization: ANN, ANN
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // Column 0: AA -> 1 match = 1
         // Column 1: NN -> 1 N-N (gap2 = 0) = 0
@@ -453,7 +515,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -479,7 +543,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -505,7 +571,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -535,7 +603,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -563,7 +633,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -591,7 +663,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -621,7 +695,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -651,7 +727,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -682,7 +760,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -713,7 +793,9 @@ TEST_SUITE("performance tests") {
         }
 
         auto start = std::chrono::high_resolution_clock::now();
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         auto end = std::chrono::high_resolution_clock::now();
 
         mem.take_after();
@@ -753,7 +835,9 @@ TEST_SUITE("biological scenarios") {
             "ATGCATGC",
             "ATGCATGC"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // Perfect conservation should give maximum score
         CHECK(result.scaled_sp > 0.99); // Very close to 1.0
@@ -766,7 +850,9 @@ TEST_SUITE("biological scenarios") {
             "GGGGTTTT",
             "TTTTGGGG"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // High variability should give negative score
         CHECK(result.scaled_sp < 0);
@@ -779,7 +865,9 @@ TEST_SUITE("biological scenarios") {
             "ATGCATGC",
             "AT--ATGC"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // Mixed gaps should give intermediate score
         CHECK(result.total_sp < 0); // Due to gap penalties
@@ -792,7 +880,9 @@ TEST_SUITE("biological scenarios") {
             "ATGCCTGC",  // Single nucleotide change
             "ATGCATGC"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // Mostly conserved with one SNP
         CHECK(result.scaled_sp > 0.5); // Still mostly positive
@@ -804,7 +894,9 @@ TEST_SUITE("biological scenarios") {
             "AUGC",  // RNA
             "ATGC"   // DNA
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // Should be treated as identical after normalization
         CHECK(approx_equal(result.total_sp, 4.0));
@@ -816,7 +908,9 @@ TEST_SUITE("biological scenarios") {
             "ACNGC",
             "ACGNC"
         };
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
 
         // N's should be penalized
         CHECK(result.total_sp < 9.0); // Less than if all were perfect matches
@@ -838,7 +932,9 @@ TEST_SUITE("detailed correctness tests") {
         // match = C(2,2)=1，其他都是 0
         // 期望得分 = 1*1 = 1
         std::vector<std::string> seqs = {"A", "A"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 1.0));
         CHECK(approx_equal(result.avg_sp, 1.0));    // 1对序列
         CHECK(approx_equal(result.scaled_sp, 1.0)); // 1列
@@ -849,7 +945,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch = 1*1 = 1
         // 期望得分 = 1*(-1) = -1
         std::vector<std::string> seqs = {"A", "C"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -1.0));
     }
 
@@ -858,7 +956,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap1 = 1*1 = 1
         // 期望得分 = 1*(-2) = -2
         std::vector<std::string> seqs = {"A", "-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -2.0));
     }
 
@@ -867,7 +967,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap2 包含 gap-gap = C(2,2)=1
         // gap2S=0，期望得分 = 1*0 = 0
         std::vector<std::string> seqs = {"-", "-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 0.0));
     }
 
@@ -876,7 +978,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap2 包含 N-ATGC = 1*1 = 1
         // gap2S=0，期望得分 = 1*0 = 0
         std::vector<std::string> seqs = {"A", "N"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 0.0));
     }
 
@@ -885,7 +989,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap1 = (N的数量)*('-'的数量) = 1*1 = 1
         // 期望得分 = 1*(-2) = -2
         std::vector<std::string> seqs = {"N", "-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -2.0));
     }
 
@@ -897,7 +1003,9 @@ TEST_SUITE("detailed correctness tests") {
         // match = C(3,2) = 3
         // 期望得分 = 3*1 = 3
         std::vector<std::string> seqs = {"A", "A", "A"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 3.0));
         CHECK(approx_equal(result.avg_sp, 1.0));    // 3/3 = 1
         CHECK(approx_equal(result.scaled_sp, 1.0)); // 1/1 = 1
@@ -909,7 +1017,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch(A-C) = 2*1 = 2 (两个A各与一个C配对)
         // 期望得分 = 1*1 + 2*(-1) = 1 - 2 = -1
         std::vector<std::string> seqs = {"A", "A", "C"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -1.0));
     }
 
@@ -918,7 +1028,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch = A*C + A*G + C*G = 1*1 + 1*1 + 1*1 = 3
         // 期望得分 = 3*(-1) = -3
         std::vector<std::string> seqs = {"A", "C", "G"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -3.0));
     }
 
@@ -928,7 +1040,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap1 = (A+C+G+T+N)*D = 2*1 = 2
         // 期望得分 = 1*1 + 2*(-2) = 1 - 4 = -3
         std::vector<std::string> seqs = {"A", "A", "-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -3.0));
     }
 
@@ -938,7 +1052,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap2 中 gap-gap = C(2,2) = 1
         // 期望得分 = 2*(-2) + 1*0 = -4
         std::vector<std::string> seqs = {"A", "-", "-"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -4.0));
     }
 
@@ -950,7 +1066,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch(A-C) = 3*1 = 3 (三个A各与一个C配对)
         // 期望得分 = 3*1 + 3*(-1) = 3 - 3 = 0
         std::vector<std::string> seqs = {"A", "A", "A", "C"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 0.0));
     }
 
@@ -960,7 +1078,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch(A-C) = 2*2 = 4
         // 期望得分 = 2*1 + 4*(-1) = 2 - 4 = -2
         std::vector<std::string> seqs = {"A", "A", "C", "C"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -2.0));
     }
 
@@ -969,7 +1089,9 @@ TEST_SUITE("detailed correctness tests") {
         // mismatch = A*C + A*G + A*T + C*G + C*T + G*T = 6
         // 期望得分 = 6*(-1) = -6
         std::vector<std::string> seqs = {"A", "C", "G", "T"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -6.0));
     }
 
@@ -979,7 +1101,9 @@ TEST_SUITE("detailed correctness tests") {
         // 场景：2 条序列，2 列，都是匹配
         // 每列得分 = 1，总分 = 2
         std::vector<std::string> seqs = {"AC", "AC"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 2.0));
         CHECK(approx_equal(result.scaled_sp, 1.0)); // 2/(1*2) = 1
     }
@@ -988,7 +1112,9 @@ TEST_SUITE("detailed correctness tests") {
         // 场景：2 条序列，第一列匹配(A-A)，第二列错配(C-G)
         // 总分 = 1 + (-1) = 0
         std::vector<std::string> seqs = {"AC", "AG"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 0.0));
     }
 
@@ -1067,7 +1193,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap1 = (A+C+G+T+N)*D = 5*1 = 5
         // gap2 = C(D,2) + C(N,2) + (A+C+G+T)*N = 0 + 0 + 4*1 = 4
         // 总分 = 0 + 6*(-1) + 5*(-2) + 4*0 = -6 - 10 = -16
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -16.0));
     }
 
@@ -1082,7 +1210,9 @@ TEST_SUITE("detailed correctness tests") {
         // 列1: -C- => gap1=(C)*D=1*2=2, gap2=C(2,2)=1, 得分=2*(-2)+1*0=-4
         // 列2: NNN => gap2=C(3,2)=3, 得分=3*0=0
         // 总分 = 3 - 4 + 0 = -1
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -1.0));
     }
 
@@ -1129,7 +1259,9 @@ TEST_SUITE("detailed correctness tests") {
         // 总分 = 4 * 10 = 40
         // avg_sp = 40 / 10 = 4
         // scaled_sp = 4 / 4 = 1
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 40.0));
         CHECK(approx_equal(result.avg_sp, 4.0));
         CHECK(approx_equal(result.scaled_sp, 1.0));
@@ -1146,7 +1278,9 @@ TEST_SUITE("detailed correctness tests") {
         // match(CC) = C(5,2) = 10
         // mismatch(A-C) = 5*5 = 25
         // 总分 = 10 + 10 + 25*(-1) = 20 - 25 = -5
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -5.0));
     }
 
@@ -1154,7 +1288,9 @@ TEST_SUITE("detailed correctness tests") {
 
     TEST_CASE("exactly 2 sequences - minimal valid input") {
         std::vector<std::string> seqs = {"A", "A"};
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 1.0));
         CHECK(approx_equal(result.avg_sp, 1.0));   // 1 对
         CHECK(approx_equal(result.scaled_sp, 1.0)); // 1 列
@@ -1164,7 +1300,9 @@ TEST_SUITE("detailed correctness tests") {
         std::vector<std::string> seqs = {"A", "C", "G"};
         // 3 序列 1 列
         // mismatch = A*C + A*G + C*G = 3
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -3.0));
         CHECK(approx_equal(result.scaled_sp, -1.0)); // -3 / 3对 / 1列
     }
@@ -1177,7 +1315,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap2 包含 N-(A+C+G+T) = 1*4 = 4
         // mismatch = A*C + A*G + A*T + C*G + C*T + G*T = 6
         // 总分 = 4*0 + 6*(-1) = -6
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -6.0));
     }
 
@@ -1187,7 +1327,9 @@ TEST_SUITE("detailed correctness tests") {
         // gap1 = (A+C+G+T)*D = 4*1 = 4
         // mismatch = 6
         // 总分 = 4*(-2) + 6*(-1) = -8 - 6 = -14
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -14.0));
     }
 
@@ -1204,7 +1346,9 @@ TEST_SUITE("detailed correctness tests") {
         //   - 总得分 = -4
         // 列3: -,-,T (同列2) = -4
         // 总分 = 0 + 0 - 4 - 4 = -8
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -8.0));
     }
 
@@ -1217,7 +1361,9 @@ TEST_SUITE("detailed correctness tests") {
         };
         // 每列都是 1 个 A 和 1 个 C，都是 mismatch
         // 总分 = 4 * (-1) = -4
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -4.0));
     }
 
@@ -1229,7 +1375,9 @@ TEST_SUITE("detailed correctness tests") {
         // 每列都是 1 个碱基和 1 个 gap
         // 每列 gap1 = 1*1 = 1
         // 总分 = 4 * 1 * (-2) = -8
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, -8.0));
     }
 
@@ -1245,7 +1393,9 @@ TEST_SUITE("detailed correctness tests") {
         // match(AA) = C(9,2) = 36
         // mismatch(A-C) = 9*1 = 9
         // 总分 = 36 - 9 = 27
-        auto result = calculate_sp_score(seqs);
+        std::string temp_file = create_temp_fasta(seqs);
+        auto result = calculate_sp_score_streaming(temp_file);
+        remove_temp_file(temp_file);
         CHECK(approx_equal(result.total_sp, 27.0));
     }
 }

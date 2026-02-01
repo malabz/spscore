@@ -327,31 +327,31 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
 // CLI 使用说明
 static void usage(const char* prog) {
     std::cerr
-        << "用法: " << prog << " -i <msa.fasta[.gz]> [选项]\n"
+        << "Usage: " << prog << " -i <msa.fasta[.gz]> [options]\n"
         << "\n"
-        << "必需参数:\n"
-        << "  -i, --input FILE     输入 FASTA 文件（支持 .gz 压缩）\n"
+        << "Required arguments:\n"
+        << "  -i, --input FILE     Input FASTA file (supports .gz compression)\n"
         << "\n"
-        << "可选参数:\n"
-        << "  -t, --threads NUM    OpenMP 线程数（默认：所有可用核心）\n"
-        << "  --match SCORE        匹配得分（默认：1.0）\n"
-        << "  --mismatch SCORE     错配得分（默认：-1.0）\n"
-        << "  --gap1 SCORE         gap1 惩罚（默认：-2.0）\n"
-        << "                       gap1: gap 与碱基/N 的配对\n"
-        << "  --gap2 SCORE         gap2 惩罚（默认：0.0）\n"
-        << "                       gap2: gap-gap, N-N, N-碱基 的配对\n"
-        << "  --streaming          使用流式模式（内存友好，适合大文件）\n"
-        << "  -h, --help           显示此帮助信息\n"
+        << "Optional arguments:\n"
+        << "  -t, --threads NUM    Number of OpenMP threads (default: all available cores)\n"
+        << "  --match SCORE        Match score (default: 1.0)\n"
+        << "  --mismatch SCORE     Mismatch score (default: -1.0)\n"
+        << "  --gap1 SCORE         gap1 penalty (default: -2.0)\n"
+        << "                       gap1: gap with base/N pairing\n"
+        << "  --gap2 SCORE         gap2 penalty (default: 0.0)\n"
+        << "                       gap2: gap-gap, N-N, N-base pairing\n"
+        << "  --streaming          Use streaming mode (memory friendly, suitable for large files)\n"
+        << "  -h, --help           Show this help message\n"
         << "\n"
-        << "示例:\n"
+        << "Examples:\n"
         << "  " << prog << " -i alignment.fa\n"
         << "  " << prog << " -i alignment.fa.gz -t 8 --streaming\n"
         << "  " << prog << " -i alignment.fa --match 2 --mismatch -3\n"
         << "\n"
-        << "输出:\n"
-        << "  SP score:    所有列的总得分\n"
-        << "  Avg SP:      平均每对序列的得分\n"
-        << "  Scaled SP:   平均每对序列每列的得分（长度归一化）\n";
+        << "Output:\n"
+        << "  SP score:    Total score for all columns\n"
+        << "  Avg SP:      Average score per pair of sequences\n"
+        << "  Scaled SP:   Average score per pair per column (length normalized)\n";
 }
 
 // 解析形如 "--match <double>" 的参数。
@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
     std::string input_path;
     double matchS = 1.0, mismatchS = -1.0, gap1S = -2.0, gap2S = 0.0;
     int num_threads = -1;  // -1 表示使用默认值（所有可用核心）
-    bool use_streaming = false;  // 是否使用流式模式
+    bool use_streaming = true;  // 是否使用流式模式
 
     // CLI parsing
     for (int i = 1; i < argc; ++i) {
@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
             if (i + 1 >= argc) { usage(argv[0]); return 2; }
             num_threads = std::atoi(argv[++i]);
             if (num_threads < 1) {
-                std::cerr << "错误: 线程数必须 >= 1\n";
+                std::cerr << "Error: thread must >= 1\n";
                 return 2;
             }
         } else if (std::strcmp(a, "--streaming") == 0) {
@@ -400,14 +400,14 @@ int main(int argc, char** argv) {
             usage(argv[0]);
             return 0;
         } else {
-            std::cerr << "未知参数: " << a << "\n\n";
+            std::cerr << "unknown args: " << a << "\n\n";
             usage(argv[0]);
             return 2;
         }
     }
 
     if (input_path.empty()) {
-        std::cerr << "错误: 必须指定输入文件 (-i)\n\n";
+        std::cerr << "Error: input file (-i) must be specified\n\n";
         usage(argv[0]);
         return 2;
     }
@@ -416,9 +416,6 @@ int main(int argc, char** argv) {
     #ifdef _OPENMP
     if (num_threads > 0) {
         omp_set_num_threads(num_threads);
-        std::cerr << "使用 " << num_threads << " 个线程\n";
-    } else {
-        std::cerr << "使用默认线程数: " << omp_get_max_threads() << "\n";
     }
     #else
     if (num_threads > 0) {
@@ -430,7 +427,6 @@ int main(int argc, char** argv) {
         SPScoreResult result;
 
         if (use_streaming) {
-            std::cerr << "使用流式模式（内存友好）\n";
             result = calculate_sp_score_streaming(input_path, matchS, mismatchS, gap1S, gap2S);
         } else {
             // 传统模式：一次性加载所有序列
@@ -451,7 +447,7 @@ int main(int argc, char** argv) {
 
     } catch (const std::exception& e) {
         // 将错误信息输出到 stderr 并返回非 0
-        std::cerr << "错误: " << e.what() << "\n";
+        std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
 
