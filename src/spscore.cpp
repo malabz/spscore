@@ -419,7 +419,7 @@ int main(int argc, char** argv) {
     }
     #else
     if (num_threads > 0) {
-        std::cerr << "警告: 未启用 OpenMP，线程参数无效\n";
+        std::cerr << "Warning: OpenMP not enabled, thread parameter ignored\n";;
     }
     #endif
 
@@ -430,20 +430,16 @@ int main(int argc, char** argv) {
             result = calculate_sp_score_streaming(input_path, matchS, mismatchS, gap1S, gap2S);
         } else {
             // 传统模式：一次性加载所有序列
-            std::cerr << "加载序列...\n";
             std::vector<std::string> seqs = load_fasta(input_path);
-            std::cerr << "已加载 " << seqs.size() << " 条序列，长度 " << seqs[0].size() << " bp\n";
-
-            std::cerr << "计算 SP score...\n";
             result = calculate_sp_score(seqs, matchS, mismatchS, gap1S, gap2S);
         }
 
-        // Output results（固定小数输出，便于脚本解析）
+        // Output results (using tabs for easier script parsing)
         std::cout.setf(std::ios::fixed);
         std::cout << std::setprecision(6);
-        std::cout << "SP score: " << result.total_sp << "\n";
-        std::cout << "Avg SP: " << result.avg_sp << "\n";
-        std::cout << "Scaled SP: " << result.scaled_sp << "\n";
+        std::cout << "SP score\t" << result.total_sp << "\n";
+        std::cout << "Avg SP\t" << result.avg_sp << "\n";
+        std::cout << "Scaled SP\t" << result.scaled_sp << "\n";
 
     } catch (const std::exception& e) {
         // 将错误信息输出到 stderr 并返回非 0

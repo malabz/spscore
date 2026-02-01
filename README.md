@@ -37,6 +37,12 @@ cmake --build . -j
 ```bash
 ./spscore -i ./test/data/mt1x.aligned.fasta.gz --threads 8
 ```
+output:
+```
+SP score        3715981575.000000
+Avg SP  16482.070005
+Scaled SP       0.990926
+```
 
 ### Run Tests
 ```bash
