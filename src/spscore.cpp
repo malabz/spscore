@@ -250,6 +250,8 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
     std::vector<std::vector<uint32_t>> column_counts;
 
     // ========== 第一阶段：流式读取并累积各列计数 ==========
+    size_t progress_interval = 100;  // Update progress every 100 sequences
+
     while (kseq_read(ks) >= 0) {
         const size_t seq_len = ks->seq.l;
 
@@ -290,7 +292,26 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
         }
 
         ++M;
+
+        // Real-time progress (common style): \r overwrite + flush
+        if (M == 1 || (M % progress_interval == 0)) {
+            static const char spinner[] = "|/-\\";
+            static size_t spin_idx = 0;
+
+            std::cerr
+                << '\r'                                   // 回到行首覆盖
+                << spinner[spin_idx++ & 3]                // 小转轮
+                << " Reading: " << M << " sequences"
+                << " (length: " << L << " bp)    "        // 末尾留空，覆盖残留字符
+                << std::flush;
+        }
+
     }
+
+    std::cerr
+        << "\rDone: " << M << " sequences loaded (length: " << L << " bp)          \n"
+        << std::flush;
+
 
     kseq_destroy(ks);
     gzclose(fp);
@@ -305,7 +326,6 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
     for (long long j = 0; j < (long long)L; ++j) {
         total += score_of_counts(column_counts[j].data(), matchS, mismatchS, gap1S, gap2S);
     }
-
     // ========== 计算 avg 和 scaled ==========
     const long double pair_num_ld = (long double)M * (long double)(M - 1) / 2.0L;
     const double pair_num = (double)pair_num_ld;

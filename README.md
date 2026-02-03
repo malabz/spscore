@@ -43,6 +43,9 @@ cmake --build . -j
 ### Example:
 ```bash
 ./spscore -i ./test/data/mt1x.aligned.fasta.gz
+
+#  output to redirect to file
+./spscore -i ./test/data/mt1x.aligned.fasta.gz > /path/to/output.txt
 ```
 output:
 ```
