@@ -250,7 +250,7 @@ SPScoreResult calculate_sp_score_streaming(const std::string& path,
     std::vector<std::vector<uint32_t>> column_counts;
 
     // ========== 第一阶段：流式读取并累积各列计数 ==========
-    size_t progress_interval = 100;  // Update progress every 100 sequences
+    size_t progress_interval = 1000;  // Update progress every 1000 sequences
 
     while (kseq_read(ks) >= 0) {
         const size_t seq_len = ks->seq.l;
